@@ -15,7 +15,7 @@ st.markdown(
     """
     <style>
     .stApp {
-        background-color: #e6f3ff; /* Light blue background */
+        background-color: #e6f3ff;
     }
     </style>
     """,
@@ -26,32 +26,33 @@ st.markdown(
 model = joblib.load("final_model.pkl")
 selected_features = joblib.load("selected_features.pkl")
 
-# ✅ Force CPU usage for transformer model (fixes Streamlit Cloud error)
-embedder = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
+# Do not force device on model to avoid NotImplementedError
+embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
 # SHAP explainer
 explainer = shap.LinearExplainer(model, masker=shap.maskers.Independent(np.zeros((1, len(selected_features)))))
 
-# App Title
+# Title and instructions
 st.title("Mental Health Prediction Using Genetic Algorithm-Based Feature Selection")
 st.write("Designed by Jacqueline Chiazor for CS 548 Project")
 st.write("Enter a short tweet-style message. The model will predict if it reflects a depressed mental state.")
 
-# Session state for storing recent predictions
+# Session state for predictions
 if 'recent_predictions' not in st.session_state:
     st.session_state.recent_predictions = []
 
-# Single Prediction Section
+# Single Prediction
 user_input = st.text_area(" Type your message here:", "")
 
 if st.button("Predict"):
     if user_input.strip() == "":
         st.warning("Please enter a message.")
     else:
-        X_input = embedder.encode([user_input], convert_to_numpy=True)
-
         try:
+            # ✅ Use CPU for encoding to avoid device errors
+            X_input = embedder.encode([user_input], convert_to_numpy=True, device='cpu')
             X_selected = X_input[:, selected_features]
+
             prediction = model.predict(X_selected)[0]
             proba = model.predict_proba(X_selected)[0]
             confidence = round(np.max(proba) * 100, 2)
@@ -69,19 +70,18 @@ if st.button("Predict"):
                     - [Find more support](https://www.mentalhealth.gov/get-help)
                     """)
 
-            # SHAP Explainability
             shap_values = explainer.shap_values(X_selected)
             shap_explanation = shap.Explanation(
                 values=shap_values[0],
                 base_values=explainer.expected_value,
                 data=X_selected[0]
             )
+
             st.subheader("SHAP Feature Impact")
             fig, ax = plt.subplots()
             shap.plots.bar(shap_explanation, show=False, ax=ax)
             st.pyplot(fig)
 
-            # Influential feature indices
             top_indices = np.argsort(model.coef_[0])[::-1][:5]
             st.write("Top influencing embedding dimensions:")
             st.write(top_indices.tolist())
@@ -95,12 +95,12 @@ if st.button("Predict"):
         except Exception as e:
             st.error(f"Error: {e}")
 
-# Display recent predictions
+# Show recent predictions
 if st.session_state.recent_predictions:
     st.subheader("Recent Predictions")
     st.table(pd.DataFrame(st.session_state.recent_predictions[::-1]))
 
-# Batch Prediction Section
+# Batch prediction
 st.markdown("---")
 st.header("Batch Prediction from CSV")
 uploaded_file = st.file_uploader("Upload a CSV file with a column named 'text'", type="csv")
@@ -125,7 +125,8 @@ if uploaded_file is not None:
 
             df_input = df_input.sample(n=sample_size, random_state=42).reset_index(drop=True)
 
-            encoded = embedder.encode(df_input['text'].astype(str).tolist(), convert_to_numpy=True)
+            # ✅ Force CPU during batch encoding too
+            encoded = embedder.encode(df_input['text'].astype(str).tolist(), convert_to_numpy=True, device='cpu')
             encoded_selected = encoded[:, selected_features]
 
             predictions = model.predict(encoded_selected)
@@ -150,7 +151,7 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"Error: {e}")
 
-# Sidebar Info
+# Sidebar info
 st.sidebar.title("About")
 st.sidebar.info(
     "This app predicts mental health status (Depressed / Not Depressed) "
@@ -160,7 +161,7 @@ st.sidebar.info(
     "**Dataset**: Tweets from users with and without depression"
 )
 
-# Evaluation Info
+# Model evaluation
 with st.expander("Model Evaluation"):
     st.write("F1 Score: 0.84")
     st.write("Accuracy: 85%")
