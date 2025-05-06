@@ -27,7 +27,7 @@ model = joblib.load("final_model.pkl")
 selected_features = np.arange(256)
 
 # ✅ Force CPU usage for transformer model (fixes Streamlit Cloud error)
-embedder = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
+embedder = SentenceTransformer('paraphrase-MiniLM-L3-v2')
 
 # SHAP explainer
 explainer = shap.LinearExplainer(model, masker=shap.maskers.Independent(np.zeros((1, len(selected_features)))))
