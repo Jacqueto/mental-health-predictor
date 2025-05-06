@@ -7,39 +7,41 @@ from sklearn.linear_model import LogisticRegression
 import matplotlib.pyplot as plt
 import shap
 
-# Streamlit config (must be the first Streamlit command)
+# Page configuration
 st.set_page_config(page_title="Mental Health Predictor", layout="centered")
 
-# Custom CSS to change background color
+# Background styling
 st.markdown(
     """
     <style>
     .stApp {
-        background-color: #e6f3ff; /* Light gray background */
+        background-color: #e6f3ff; /* Light blue background */
     }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# Load model and features
+# Load model and selected features
 model = joblib.load("final_model.pkl")
 selected_features = joblib.load("selected_features.pkl")
-embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Init SHAP
+# ✅ Force CPU usage for transformer model (fixes Streamlit Cloud error)
+embedder = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
+
+# SHAP explainer
 explainer = shap.LinearExplainer(model, masker=shap.maskers.Independent(np.zeros((1, len(selected_features)))))
 
-# App title and description
+# App Title
 st.title("Mental Health Prediction Using Genetic Algorithm-Based Feature Selection")
 st.write("Designed by Jacqueline Chiazor for CS 548 Project")
 st.write("Enter a short tweet-style message. The model will predict if it reflects a depressed mental state.")
 
-# Session state: recent predictions
+# Session state for storing recent predictions
 if 'recent_predictions' not in st.session_state:
     st.session_state.recent_predictions = []
 
-# ---- Single Message Prediction ----
+# Single Prediction Section
 user_input = st.text_area(" Type your message here:", "")
 
 if st.button("Predict"):
@@ -58,7 +60,6 @@ if st.button("Predict"):
             st.subheader(f"Prediction: {label}")
             st.write(f"**Confidence:** {confidence}%")
 
-            # Mental Health Resources
             if prediction == 1:
                 st.warning("💡 You're not alone. If you're feeling distressed, consider reaching out for support.")
                 with st.expander("Mental Health Resources"):
@@ -68,25 +69,23 @@ if st.button("Predict"):
                     - [Find more support](https://www.mentalhealth.gov/get-help)
                     """)
 
-            # SHAP Explainability (Bar Plot)
+            # SHAP Explainability
             shap_values = explainer.shap_values(X_selected)
             shap_explanation = shap.Explanation(
                 values=shap_values[0],
                 base_values=explainer.expected_value,
                 data=X_selected[0]
             )
-
             st.subheader("SHAP Feature Impact")
             fig, ax = plt.subplots()
             shap.plots.bar(shap_explanation, show=False, ax=ax)
             st.pyplot(fig)
 
-            
+            # Influential feature indices
             top_indices = np.argsort(model.coef_[0])[::-1][:5]
             st.write("Top influencing embedding dimensions:")
             st.write(top_indices.tolist())
 
-           
             st.session_state.recent_predictions.append({
                 "message": user_input,
                 "prediction": "Depressed" if prediction == 1 else "Not Depressed",
@@ -96,12 +95,12 @@ if st.button("Predict"):
         except Exception as e:
             st.error(f"Error: {e}")
 
-# Show recent predictions
+# Display recent predictions
 if st.session_state.recent_predictions:
     st.subheader("Recent Predictions")
     st.table(pd.DataFrame(st.session_state.recent_predictions[::-1]))
 
-# ---- Batch Prediction ----
+# Batch Prediction Section
 st.markdown("---")
 st.header("Batch Prediction from CSV")
 uploaded_file = st.file_uploader("Upload a CSV file with a column named 'text'", type="csv")
@@ -151,7 +150,7 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"Error: {e}")
 
-# ---- Sidebar Info ----
+# Sidebar Info
 st.sidebar.title("About")
 st.sidebar.info(
     "This app predicts mental health status (Depressed / Not Depressed) "
@@ -161,7 +160,7 @@ st.sidebar.info(
     "**Dataset**: Tweets from users with and without depression"
 )
 
-# ---- Model Metrics ----
+# Evaluation Info
 with st.expander("Model Evaluation"):
     st.write("F1 Score: 0.84")
     st.write("Accuracy: 85%")
